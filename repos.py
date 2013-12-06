@@ -1,0 +1,3 @@
+repos = [
+    'kangax/fabric.js'
+]
