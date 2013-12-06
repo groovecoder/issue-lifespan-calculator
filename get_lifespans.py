@@ -7,6 +7,7 @@ import hashlib
 import urllib
 import requests
 import json
+import re
 
 from repos import repos
 
@@ -28,16 +29,37 @@ avg_lifespans = {}
 contributors_by_level = {}
 
 
+def get_repo_issues(starting_url):
+    repo_issues = []
+    page_num = 1
+    issues, next_page = api_get(starting_url,
+                                None,
+                                'repoissues_page_%s' % page_num,
+                                GITHUB_REPOS_CACHE_AGE)
+    repo_issues += issues
+    while next_page:
+        issues, next_page = api_get(next_page,
+                                    None,
+                                    'repoissues_page_%s' % page_num,
+                                    GITHUB_REPOS_CACHE_AGE)
+        repo_issues += issues
+    return repo_issues
+
+
 def add_repo_lifespans(lifespans, repo):
     print "Fetching lifespans for %s" % repo
     repo_url = '%s/repos/%s' % (GITHUB_API_HOST, repo)
 
-    repoissues = api_get('%s/issues?per_page=100' % repo_url, None,
-                         'repoissues', GITHUB_REPOS_CACHE_AGE)
-    if type(repoissues) == dict:
+    open_url = '%s/issues?per_page=100' % repo_url
+    open_issues = get_repo_issues(open_url)
+    closed_url = '%s/issues?per_page=100&state=closed' % repo_url
+    closed_issues = get_repo_issues(closed_url)
+
+    repo_issues = open_issues + closed_issues
+    if type(repo_issues) == dict:
         return
     repo_lifespans = []
-    for repoissue in repoissues:
+    for repoissue in repo_issues:
         if repoissue['closed_at'] is None:
             closed_at = datetime.utcnow()
         else:
@@ -50,7 +72,7 @@ def add_repo_lifespans(lifespans, repo):
     total_lifespan = timedelta()
     for lifespan in repo_lifespans:
         total_lifespan += lifespan
-    avg_lifespan = total_lifespan / len(repoissues)
+    avg_lifespan = total_lifespan / len(repo_issues)
 
     print "repo: %s avg issue lifespan: %s" % (repo, avg_lifespan)
 
@@ -109,13 +131,20 @@ def api_get(path, params=None, cache_name=False, cache_timeout=86400):
         except ValueError:
             pass
 
+    next_page = None
     # If data was missing or stale from cache, finally perform GET
     if not data:
         print "GET %s" % url
-        data = requests.get(url).json()
+        resp = requests.get(url)
+        link = resp.headers['Link']
+        if link:
+            next_page_match = re.match('\<(.*)\>; rel="next"', link)
+            if next_page_match:
+                next_page = next_page_match.group(1)
+        data = resp.json()
         json.dump(data, open(cache_path, 'w'))
 
-    return data
+    return data, next_page
 
 
 def file_age(fn):
