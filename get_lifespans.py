@@ -51,11 +51,11 @@ def add_repo_lifespans(lifespans, repo):
     repo_url = '%s/repos/%s' % (GITHUB_API_HOST, repo)
 
     open_url = '%s/issues?per_page=100' % repo_url
-    open_issues = get_repo_issues(open_url)
+    # open_issues = get_repo_issues(open_url)
     closed_url = '%s/issues?per_page=100&state=closed' % repo_url
     closed_issues = get_repo_issues(closed_url)
 
-    repo_issues = open_issues + closed_issues
+    repo_issues = closed_issues
     if type(repo_issues) == dict:
         return
     repo_lifespans = []
